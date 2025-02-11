@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import os
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -28,19 +29,20 @@ def save_memory(conversation):
     conn.commit()
     conn.close()
 
-# Retrieve last memory entry
-def retrieve_last_memory():
+# Retrieve all stored memory
+def retrieve_all_memory():
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
-    cursor.execute("SELECT conversation FROM memory ORDER BY timestamp DESC LIMIT 1")
-    result = cursor.fetchone()
+    cursor.execute("SELECT conversation FROM memory ORDER BY timestamp ASC")
+    rows = cursor.fetchall()
     conn.close()
-    return result[0] if result else "No previous memory found."
+    return [row[0] for row in rows] if rows else ["No previous memory found."]
 
+# Auto-save incoming chat messages
 @app.route("/auto_save", methods=["POST"])
 def auto_save():
     data = request.json
-    print("Received request:", data)  # Print incoming request data
+    print("Received request:", data)  # Debugging log
 
     user_message = data.get("user_message", "")
     solace_message = data.get("solace_message", "")
@@ -52,35 +54,26 @@ def auto_save():
         print("Saving Solace Message:", solace_message)
         save_memory(f"Solace: {solace_message}")
 
-    print("Returning success response")  # Debug message
+    print("Returning success response")  # Debugging log
     return jsonify({"message": "Both user and Solace messages saved."})
 
-
+# API Security Key (Change this to a strong key)
 API_KEY = "ahuramazda32"  # Change this to any strong key you want
 
 def authenticate(request):
     key = request.headers.get("X-API-KEY")
     return key == API_KEY
 
+# Retrieve all stored conversations
 @app.route("/retrieve", methods=["GET"])
 def retrieve():
-   #  if not authenticate(request):
-    #     return jsonify({"error": "Unauthorized"}), 403  # Reject requests without the correct API key
+    # if not authenticate(request):  # Uncomment if you want security enabled
+    #     return jsonify({"error": "Unauthorized"}), 403  
     
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    cursor.execute("SELECT conversation FROM memory ORDER BY timestamp ASC")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    all_memories = [row[0] for row in rows]  # Convert DB rows to a list of memories
-    
+    all_memories = retrieve_all_memory()  
     return jsonify({"all_memories": all_memories})
 
-
-
-import os
-
+# Auto-start the database and server
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=False)
